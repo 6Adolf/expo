@@ -1,24 +1,151 @@
----
-title: Create a project
-description: Learn how to create a new Expo project.
-hideTOC: true
----
 
-import { Terminal } from '~/ui/components/Snippet';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TextInput, Button, TouchableOpacity, Image, StyleSheet, ScrollView, FlatList, Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
+import { MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 
-System requirements:
+export default function App() {
+  const [currentMenu, setCurrentMenu] = useState('Agents');
+  const [agents, setAgents] = useState([]);
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [arrivalDate, setArrivalDate] = useState('');
+  const [exitDate, setExitDate] = useState('');
+  const [photo, setPhoto] = useState(null);
 
-- [Node.js (LTS)](https://nodejs.org/en/).
-- macOS, Windows (Powershell and [WSL 2](https://expo.fyi/wsl)), and Linux are supported.
+  useEffect(() => {
+    const loadAgents = async () => {
+      const stored = await AsyncStorage.getItem('agents');
+      setAgents(stored ? JSON.parse(stored) : []);
+    };
+    loadAgents();
+  }, []);
 
-We recommend starting with the default project created by `create-expo-app`. The default project includes example code to help you get started.
+  const pickImage = async () => {
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.5,
+      base64: true,
+    });
+    if (!result.cancelled) setPhoto(result.uri);
+  };
 
-To create a new project, run the following command:
+  const saveAgent = async () => {
+    if (!name || !phone || !arrivalDate) {
+      Alert.alert("Erreur", "Veuillez remplir tous les champs obligatoires");
+      return;
+    }
+    const newAgent = { id: Date.now().toString(), name, phone, arrivalDate, exitDate, photo };
+    const updated = [...agents, newAgent];
+    await AsyncStorage.setItem('agents', JSON.stringify(updated));
+    setAgents(updated);
+    Alert.alert("Succès", "Enregistré !");
+    setName(''); setPhone(''); setArrivalDate(''); setExitDate(''); setPhoto(null);
+  };
 
-<Terminal cmd={['$ npx create-expo-app@latest']} />
+  const deleteAgent = async (id) => {
+    Alert.alert("Supprimer", "Voulez-vous vraiment supprimer ?", [
+      { text: "Annuler" },
+      { text: "Supprimer", onPress: async () => {
+        const filtered = agents.filter(a => a.id !== id);
+        await AsyncStorage.setItem('agents', JSON.stringify(filtered));
+        setAgents(filtered);
+      }}
+    ]);
+  };
 
-> You can choose a different template by adding the [`--template` option](/more/create-expo/#--template).
+  // --- Menu avec icône colorée dynamique ---
+  const MenuButton = ({ label, iconName, iconLib }) => {
+    const isActive = currentMenu === label;
+    const color = isActive ? '#1E90FF' : '#000'; // Bleu actif
+    const IconComponent = iconLib === 'Material' ? MaterialIcons : FontAwesome5;
 
-## Next step
+    return (
+      <TouchableOpacity style={[styles.menuButton, isActive && styles.menuButtonActive]} onPress={() => setCurrentMenu(label)}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <IconComponent name={iconName} size={18} color={color} style={{ marginRight: 8 }} />
+          <Text style={[styles.menuText, { color }]}>{label}</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
-You have a project. Now it's time to set up your development environment so that you can start developing.
+  return (
+    <View style={styles.container}>
+      <View style={styles.sidebar}>
+        <Text style={styles.sidebarTitle}>FOKI SECURITY</Text>
+        <MenuButton label="Agents" iconName="user-tie" iconLib="FontAwesome5" />
+        <MenuButton label="Sites" iconName="location-on" iconLib="Material" />
+        <MenuButton label="Affectations" iconName="assignment" iconLib="Material" />
+        <MenuButton label="Présences" iconName="check-circle" iconLib="Material" />
+        <MenuButton label="Salaires" iconName="attach-money" iconLib="Material" />
+        <MenuButton label="Rapports" iconName="bar-chart" iconLib="Material" />
+        <MenuButton label="Contacts" iconName="contacts" iconLib="Material" />
+        <MenuButton label="À propos" iconName="info" iconLib="Material" />
+      </View>
+
+      <ScrollView style={styles.mainContent}>
+        {currentMenu === 'Agents' && (
+          <View>
+            <Text style={styles.title}>Pointage</Text>
+            <Text>Nom complet :</Text>
+            <TextInput style={styles.input} value={name} onChangeText={setName} />
+            <Text>Numéro :</Text>
+            <TextInput style={styles.input} value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
+            <Text>Date d'arrivée :</Text>
+            <TextInput style={styles.input} value={arrivalDate} onChangeText={setArrivalDate} placeholder="JJ/MM/AAAA" />
+            <Text>Date de sortie :</Text>
+            <TextInput style={styles.input} value={exitDate} onChangeText={setExitDate} placeholder="JJ/MM/AAAA" />
+            <Button title="Choisir une photo" onPress={pickImage} />
+            {photo && <Image source={{ uri: photo }} style={styles.image} />}
+            <Button title="Enregistrer" onPress={saveAgent} />
+
+            <Text style={[styles.title, { marginTop: 20 }]}>Liste des agents</Text>
+            {agents.length === 0 && <Text>Aucun agent enregistré.</Text>}
+            <FlatList
+              data={agents}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <View style={styles.agentItem}>
+                  {item.photo && <Image source={{ uri: item.photo }} style={styles.thumb} />}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.agentName}>{item.name}</Text>
+                    <Text>{item.phone}</Text>
+                    <Text>Arrivée: {item.arrivalDate}</Text>
+                    {item.exitDate ? <Text>Sortie: {item.exitDate}</Text> : null}
+                  </View>
+                  <Button title="Supprimer" color="red" onPress={() => deleteAgent(item.id)} />
+                </View>
+              )}
+            />
+          </View>
+        )}
+
+        {currentMenu !== 'Agents' && (
+          <View>
+            <Text style={styles.title}>{currentMenu}</Text>
+            <Text>Cette section est en développement.</Text>
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+// --- Styles ---
+const styles = StyleSheet.create({
+  container: { flex: 1, flexDirection: 'row', backgroundColor: '#f5f5f5' },
+  sidebar: { width: 160, backgroundColor: '#fff', padding: 10, borderRightWidth: 1, borderColor: '#ddd' },
+  sidebarTitle: { fontWeight: 'bold', fontSize: 16, marginBottom: 15, textAlign: 'center' },
+  menuButton: { paddingVertical: 10, paddingHorizontal: 5, marginBottom: 5, borderRadius: 5 },
+  menuButtonActive: { backgroundColor: '#e6f0ff' },
+  menuText: { fontSize: 14 },
+  mainContent: { flex: 1, padding: 20 },
+  title: { fontSize: 22, fontWeight: 'bold', marginBottom: 15 },
+  input: { borderWidth: 1, borderColor: '#ccc', marginBottom: 10, padding: 10, borderRadius: 5, backgroundColor: '#fff' },
+  image: { width: 150, height: 150, marginVertical: 10, alignSelf: 'center', borderRadius: 10 },
+  agentItem: { flexDirection: 'row', alignItems: 'center', padding: 10, marginVertical: 5, backgroundColor: '#fff', borderRadius: 10, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5, elevation: 2 },
+  agentName: { fontWeight: 'bold', fontSize: 16 },
+  thumb: { width: 50, height: 50, marginRight: 10, borderRadius: 25 },
+});
